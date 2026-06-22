@@ -63,9 +63,9 @@ function handleExotelConnection(ws, req) {
         break;
 
       case 'start': {
-        session.callSid = msg.start?.callSid || msg.callSid || 'unknown';
-        session.streamSid = msg.start?.streamSid || msg.streamSid;
-        session.from = msg.start?.customParameters?.from || 'unknown';
+        session.callSid = msg.start?.call_sid || msg.start?.callSid || msg.call_sid || msg.callSid || 'unknown';
+        session.streamSid = msg.stream_sid || msg.streamSid || msg.start?.stream_sid || msg.start?.streamSid;
+        session.from = msg.start?.customParameters?.from || msg.start?.from || 'unknown';
         console.log(`[${sessionId}] Call started — SID: ${session.callSid}, From: ${session.from}`);
 
         global.broadcastToDashboard({
@@ -223,6 +223,7 @@ async function speakResponse(ws, session, text, isGreeting) {
       ws.send(JSON.stringify({
         event: 'media',
         streamSid: session.streamSid,
+        stream_sid: session.streamSid,
         media: {
           payload: chunk.toString('base64'),
         },
@@ -237,6 +238,7 @@ async function speakResponse(ws, session, text, isGreeting) {
       ws.send(JSON.stringify({
         event: 'mark',
         streamSid: session.streamSid,
+        stream_sid: session.streamSid,
         mark: { name: `tts_done_${Date.now()}` },
       }));
     }
