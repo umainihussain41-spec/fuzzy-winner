@@ -1,0 +1,13 @@
+# Nixpacks deployment config (Railway, Render, etc.)
+[phases.setup]
+nixPkgs = ["nodejs_20"]
+
+[phases.install]
+cmds = ["npm install"]
+
+[start]
+cmd = "node server.js"
+
+[variables]
+PORT = "3000"
+NODE_ENV = "production"
