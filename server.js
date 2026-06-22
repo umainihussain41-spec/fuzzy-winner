@@ -93,10 +93,14 @@ app.post('/api/calls/trigger', async (req, res) => {
   const url = `https://${domain}/v1/Accounts/${EXOTEL_ACCOUNT_SID}/Calls/connect.json`;
   const auth = Buffer.from(`${EXOTEL_API_KEY}:${EXOTEL_API_TOKEN}`).toString('base64');
 
+  const exotelBaseDomain = EXOTEL_REGION === 'in' ? 'my.exotel.in' : 'my.exotel.com';
+  const flowUrl = `http://${exotelBaseDomain}/${EXOTEL_ACCOUNT_SID}/exoml/start_voice/${appId}`;
+
   const payload = new URLSearchParams({
     From: to,
-    To: appId,
-    CallerId: EXOTEL_CALLER_ID
+    Url: flowUrl,
+    CallerId: EXOTEL_CALLER_ID,
+    CallType: 'trans'
   });
 
   try {
