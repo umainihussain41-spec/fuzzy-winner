@@ -154,6 +154,43 @@ function broadcastToDashboard(data) {
 }
 global.broadcastToDashboard = broadcastToDashboard;
 
+// ── Intercept logs & broadcast to dashboard in real-time ─────────────────────
+let isBroadcastingLog = false;
+const originalLog = console.log;
+const originalError = console.error;
+
+console.log = (...args) => {
+  originalLog(...args);
+  if (isBroadcastingLog) return;
+  isBroadcastingLog = true;
+  try {
+    const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(' ');
+    if (global.broadcastToDashboard) {
+      global.broadcastToDashboard({ type: 'log', level: 'info', message });
+    }
+  } catch (err) {
+    originalError('Error broadcasting log:', err);
+  } finally {
+    isBroadcastingLog = false;
+  }
+};
+
+console.error = (...args) => {
+  originalError(...args);
+  if (isBroadcastingLog) return;
+  isBroadcastingLog = true;
+  try {
+    const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(' ');
+    if (global.broadcastToDashboard) {
+      global.broadcastToDashboard({ type: 'log', level: 'error', message });
+    }
+  } catch (err) {
+    originalError('Error broadcasting error:', err);
+  } finally {
+    isBroadcastingLog = false;
+  }
+};
+
 function serializeSessions() {
   const result = [];
   for (const [id, session] of activeSessions) {

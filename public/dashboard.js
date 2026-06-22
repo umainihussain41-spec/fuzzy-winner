@@ -92,6 +92,10 @@ function handleMessage(msg) {
         renderTranscript(sessions[msg.sessionId]);
       }
       break;
+
+    case 'log':
+      addEvent(msg.level || 'info', msg.message);
+      break;
   }
 }
 
