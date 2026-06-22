@@ -5,7 +5,7 @@
  * Exotel WebSocket Message Types (inbound):
  *   connected  — initial handshake
  *   start      — call metadata (callSid, streamSid, etc.)
- *   media      — audio chunk (base64-encoded µ-law / PCM)
+ *   media      — audio chunk (base64-encoded raw 16-bit signed PCM mono)
  *   dtmf       — keypress event
  *   mark       — acknowledgement of sent mark
  *   clear      — barge-in: stop current TTS immediately
@@ -17,8 +17,8 @@ const { runPipeline } = require('../pipeline');
 
 // VAD: collect audio until silence detected for VAD_SILENCE_MS
 const VAD_SILENCE_MS = parseInt(process.env.VAD_SILENCE_MS || '700', 10);
-const SAMPLE_RATE = 8000;           // Exotel uses 8kHz µ-law (G.711)
-const BYTES_PER_MS = SAMPLE_RATE / 1000;  // 8 bytes per ms at 8kHz
+const SAMPLE_RATE = 8000;           // Exotel uses 8kHz 16-bit PCM mono (Linear16)
+const BYTES_PER_MS = (SAMPLE_RATE / 1000) * 2;  // 16 bytes per ms for 16-bit signed PCM mono
 
 function handleExotelConnection(ws, req) {
   const sessionId = randomUUID().slice(0, 8);
@@ -202,12 +202,24 @@ async function speakResponse(ws, session, text, isGreeting) {
     const audioBuffer = await textToSpeech(text);
     if (aborted) return;
 
-    // Send audio in 20ms chunks (160 bytes at 8kHz)
-    const CHUNK_SIZE = 160;
+    // Send audio in chunks of 3,200 bytes (200ms of 8kHz 16-bit PCM)
+    // This satisfies Exotel's constraints:
+    //   1. Payload size must be between 3,200 and 100,000 bytes
+    //   2. Chunk size must always be a multiple of 320 bytes
+    const CHUNK_SIZE = 3200;
+    const msPerChunk = (CHUNK_SIZE / (SAMPLE_RATE * 2)) * 1000; // 200ms
+
     for (let i = 0; i < audioBuffer.length; i += CHUNK_SIZE) {
       if (aborted || ws.readyState !== 1) break;
 
-      const chunk = audioBuffer.slice(i, i + CHUNK_SIZE);
+      let chunk = audioBuffer.slice(i, i + CHUNK_SIZE);
+
+      // If last chunk is smaller than 3,200 bytes, pad it with PCM silence (0)
+      if (chunk.length < CHUNK_SIZE) {
+        const padding = Buffer.alloc(CHUNK_SIZE - chunk.length, 0);
+        chunk = Buffer.concat([chunk, padding]);
+      }
+
       ws.send(JSON.stringify({
         event: 'media',
         streamSid: session.streamSid,
@@ -216,8 +228,8 @@ async function speakResponse(ws, session, text, isGreeting) {
         },
       }));
 
-      // Pace the chunks to match real-time audio (20ms per chunk at 8kHz)
-      await sleep(20);
+      // Pace the chunks to match real-time audio playback
+      await sleep(msPerChunk);
     }
 
     if (!aborted && ws.readyState === 1) {

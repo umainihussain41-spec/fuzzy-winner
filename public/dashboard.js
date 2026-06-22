@@ -277,6 +277,82 @@ async function startUptimeTicker() {
   }, 1000);
 }
 
+// ── Outbound call triggering ──────────────────────────────────────────────────
+async function triggerCall() {
+  const numberInput = document.getElementById('callToNumber');
+  const appIdInput = document.getElementById('callAppId');
+  const btn = document.getElementById('btnTriggerCall');
+  const statusDiv = document.getElementById('triggerStatus');
+
+  const to = numberInput.value.trim();
+  const appId = appIdInput.value.trim();
+
+  if (!to || !appId) {
+    showStatus('Please fill in both Phone Number and App Bazaar ID.', 'error');
+    return;
+  }
+
+  // Save to localStorage
+  localStorage.setItem('exotel_call_to', to);
+  localStorage.setItem('exotel_app_id', appId);
+
+  btn.disabled = true;
+  btn.textContent = 'Initiating...';
+  showStatus('Requesting Exotel to connect call...', 'info');
+
+  try {
+    const response = await fetch('/api/calls/trigger', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ to, appId }),
+    });
+
+    const result = await response.json();
+
+    if (response.ok && result.success) {
+      showStatus(`Call initiated! SID: ${result.callSid}`, 'success');
+      addEvent('system', `Outbound call triggered to ${to} (SID: ${result.callSid})`);
+    } else {
+      const details = result.details ? (typeof result.details === 'object' ? JSON.stringify(result.details) : result.details) : '';
+      showStatus(`❌ Failed: ${result.error || 'Unknown error'} ${details}`, 'error');
+      console.error('Trigger call error:', result);
+    }
+  } catch (err) {
+    showStatus(`❌ Network error: ${err.message}`, 'error');
+    console.error('Trigger call network error:', err);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Initiate Call';
+  }
+}
+
+function showStatus(message, type) {
+  const statusDiv = document.getElementById('triggerStatus');
+  statusDiv.style.display = 'block';
+  statusDiv.className = `call-status ${type}`;
+  statusDiv.textContent = message;
+
+  // Clear success messages after 8 seconds
+  if (type === 'success') {
+    setTimeout(() => {
+      if (statusDiv.textContent === message) {
+        statusDiv.style.display = 'none';
+      }
+    }, 8000);
+  }
+}
+
+function restoreInputs() {
+  const savedTo = localStorage.getItem('exotel_call_to');
+  const savedAppId = localStorage.getItem('exotel_app_id');
+
+  if (savedTo) document.getElementById('callToNumber').value = savedTo;
+  if (savedAppId) document.getElementById('callAppId').value = savedAppId;
+}
+
 // ── Init ─────────────────────────────────────────────────────────────────────
 connectDashboard();
 startUptimeTicker();
+restoreInputs();

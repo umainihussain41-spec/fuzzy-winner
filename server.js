@@ -10,6 +10,7 @@ const { WebSocketServer } = require('ws');
 const path = require('path');
 
 const { handleExotelConnection } = require('./src/websocket/exotelHandler');
+const axios = require('axios');
 
 const app = express();
 const server = http.createServer(app);
@@ -63,6 +64,62 @@ exotelWss.on('connection', (ws, req) => {
 // ── REST API for dashboard ───────────────────────────────────────────────────
 app.get('/api/sessions', (req, res) => {
   res.json(serializeSessions());
+});
+
+app.post('/api/calls/trigger', async (req, res) => {
+  const { to, appId } = req.body;
+  if (!to || !appId) {
+    return res.status(400).json({ error: 'Missing required parameters: to and appId' });
+  }
+
+  const {
+    EXOTEL_ACCOUNT_SID,
+    EXOTEL_API_KEY,
+    EXOTEL_API_TOKEN,
+    EXOTEL_CALLER_ID,
+    EXOTEL_REGION = 'in'
+  } = process.env;
+
+  if (!EXOTEL_ACCOUNT_SID || !EXOTEL_API_KEY || !EXOTEL_API_TOKEN || !EXOTEL_CALLER_ID) {
+    return res.status(500).json({ error: 'Exotel API credentials are not configured on the server.' });
+  }
+
+  const domain = EXOTEL_REGION === 'in' ? 'api.in.exotel.com' : 'api.exotel.com';
+  const url = `https://${domain}/v1/Accounts/${EXOTEL_ACCOUNT_SID}/Calls/connect.json`;
+  const auth = Buffer.from(`${EXOTEL_API_KEY}:${EXOTEL_API_TOKEN}`).toString('base64');
+
+  const payload = new URLSearchParams({
+    From: to,
+    To: appId,
+    CallerId: EXOTEL_CALLER_ID
+  });
+
+  try {
+    const response = await axios.post(url, payload.toString(), {
+      headers: {
+        'Authorization': `Basic ${auth}`,
+        'Content-Type': 'application/x-www-form-urlencoded'
+      }
+    });
+
+    const callDetails = response.data?.Call;
+    if (callDetails) {
+      res.json({
+        success: true,
+        callSid: callDetails.Sid,
+        status: callDetails.Status,
+        dateCreated: callDetails.DateCreated
+      });
+    } else {
+      res.status(500).json({ error: 'Unexpected response from Exotel API', details: response.data });
+    }
+  } catch (error) {
+    const errorDetails = error.response ? error.response.data : error.message;
+    res.status(error.response?.status || 500).json({
+      error: 'Failed to initiate outbound call with Exotel',
+      details: errorDetails
+    });
+  }
 });
 
 app.get('/api/health', (req, res) => {

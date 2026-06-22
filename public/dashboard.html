@@ -547,8 +547,89 @@
 
     @media (max-width: 600px) {
       .stats-grid { grid-template-columns: 1fr 1fr; }
-      .steps-grid { grid-template-columns: 1fr; }
-      .model-chips { display: none; }
+       .steps-grid { grid-template-columns: 1fr; }
+       .model-chips { display: none; }
+     }
+
+    /* Form styles */
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      flex: 1;
+    }
+
+    .form-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text2);
+    }
+
+    .form-input {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      padding: 10px 14px;
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 13px;
+      transition: border-color 0.2s;
+      font-family: inherit;
+    }
+
+    .form-input:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border: none;
+      color: white;
+      padding: 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      transition: opacity 0.2s, transform 0.1s;
+      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);
+      font-family: inherit;
+    }
+
+    .btn-primary:hover {
+      opacity: 0.9;
+    }
+
+    .btn-primary:active {
+      transform: scale(0.98);
+    }
+
+    .call-status {
+      font-size: 12px;
+      padding: 8px 12px;
+      border-radius: 6px;
+      text-align: center;
+      margin-top: 6px;
+      animation: fadeSlideIn 0.2s ease;
+    }
+
+    .call-status.success {
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.2);
+      color: var(--green);
+    }
+
+    .call-status.error {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.2);
+      color: var(--red);
+    }
+
+    .call-status.info {
+      background: rgba(59, 130, 246, 0.1);
+      border: 1px solid rgba(59, 130, 246, 0.2);
+      color: var(--accent);
     }
   </style>
 </head>
@@ -612,6 +693,29 @@
 
     <!-- Left: Sessions + Event feed -->
     <div style="display:flex;flex-direction:column;gap:20px;">
+      <!-- Outbound Call Trigger -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">📞 Trigger Outbound Call</div>
+        </div>
+        <div style="padding: 18px; display: flex; flex-direction: column; gap: 16px;">
+          <div style="display: flex; gap: 12px;">
+            <div class="form-group">
+              <label class="form-label" for="callToNumber">Phone Number</label>
+              <input class="form-input" type="text" id="callToNumber" placeholder="+91XXXXXXXXXX" />
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="callAppId">App Bazaar ID</label>
+              <input class="form-input" type="text" id="callAppId" placeholder="e.g. 123456" />
+            </div>
+          </div>
+          <button class="btn-primary" id="btnTriggerCall" onclick="triggerCall()">
+            Initiate Call
+          </button>
+          <div id="triggerStatus" style="display: none;"></div>
+        </div>
+      </div>
+
       <div class="panel">
         <div class="panel-header">
           <div class="panel-title">

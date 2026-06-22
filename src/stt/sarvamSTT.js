@@ -11,7 +11,7 @@ const SARVAM_STT_URL = 'https://api.sarvam.ai/speech-to-text';
 const SARVAM_API_KEY = process.env.SARVAM_API_KEY;
 
 /**
- * Convert raw PCM (µ-law 8kHz, from Exotel) buffer to text transcript.
+ * Convert raw PCM (16-bit mono 8kHz, from Exotel) buffer to text transcript.
  * Sarvam expects WAV format, so we wrap the PCM in a WAV header.
  *
  * @param {Buffer} audioBuffer  - Raw audio bytes from Exotel
@@ -74,7 +74,7 @@ async function speechToText(audioBuffer, lang = 'en-IN') {
 
 /**
  * Build a WAV file buffer from raw PCM data.
- * Exotel sends µ-law (G.711) which we treat as raw PCM for Sarvam.
+ * Exotel sends 16-bit Linear PCM which we wrap in a WAV header for Sarvam STT.
  */
 function buildWavHeader(pcmData, sampleRate, numChannels, bitsPerSample) {
   const dataSize = pcmData.length;

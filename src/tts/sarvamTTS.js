@@ -16,10 +16,10 @@ const LANGUAGE = process.env.SARVAM_LANGUAGE || 'en-IN';
 
 /**
  * Convert text to speech using Sarvam Bulbul:v3 (Indian accent)
- * Returns a Buffer of raw PCM audio (8kHz, mono, µ-law) suitable for Exotel
+ * Returns a Buffer of raw 16-bit PCM mono audio (8kHz) suitable for Exotel
  *
  * @param {string} text       - Text to synthesize (max 2500 chars)
- * @returns {Promise<Buffer>} - Raw PCM audio buffer
+ * @returns {Promise<Buffer>} - Raw PCM audio buffer (16-bit signed, little-endian, mono)
  */
 async function textToSpeech(text) {
   if (!SARVAM_API_KEY) throw new Error('SARVAM_API_KEY not set in environment');
