@@ -19,6 +19,11 @@ const server = http.createServer(app);
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
 
+// Redirect root / to dashboard
+app.get('/', (req, res) => {
+  res.redirect('/dashboard.html');
+});
+
 // ── Active sessions store (for dashboard) ───────────────────────────────────
 const activeSessions = new Map();
 global.activeSessions = activeSessions;
