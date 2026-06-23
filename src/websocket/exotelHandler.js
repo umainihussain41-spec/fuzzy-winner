@@ -19,7 +19,7 @@ const { runPipeline } = require('../pipeline');
 const VAD_SILENCE_MS = parseInt(process.env.VAD_SILENCE_MS || '700', 10);
 function handleExotelConnection(ws, req) {
   const urlObj = new URL(req.url || '', 'http://localhost');
-  const sampleRateParam = urlObj.searchParams.get('sample-rate') || urlObj.searchParams.get('sample_rate') || '16000';
+  const sampleRateParam = urlObj.searchParams.get('sample-rate') || urlObj.searchParams.get('sample_rate') || '8000';
   const sampleRate = parseInt(sampleRateParam, 10);
   const bytesPerMs = (sampleRate / 1000) * 2;
 
@@ -222,6 +222,9 @@ async function speakResponse(ws, session, text, isGreeting) {
 
     const msPerChunk = (CHUNK_SIZE / (session.sampleRate * 2)) * 1000;
 
+    const startTime = Date.now();
+    let chunksSent = 0;
+
     for (let i = 0; i < audioBuffer.length; i += CHUNK_SIZE) {
       if (aborted || ws.readyState !== 1) break;
 
@@ -242,8 +245,16 @@ async function speakResponse(ws, session, text, isGreeting) {
         },
       }));
 
-      // Pace slightly faster than real-time (85% of chunk duration) to prevent buffer underflow/slow-motion sound
-      await sleep(msPerChunk * 0.85);
+      chunksSent++;
+
+      // Calculate next send time and compensate for event loop drift
+      const nextSendTime = startTime + (chunksSent * msPerChunk);
+      const delay = nextSendTime - Date.now();
+
+      if (delay > 0) {
+        // Stream slightly ahead (85% of target delay) to avoid buffer starvation
+        await sleep(delay * 0.85);
+      }
     }
 
     if (!aborted && ws.readyState === 1) {
