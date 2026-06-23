@@ -89,9 +89,9 @@ async function synthesizeChunk(text, sampleRate) {
         throw new Error('No audio in TTS response');
       }
 
-      // Decode base64 WAV → strip WAV header → return raw PCM bytes
+      // Decode base64 WAV → validate sample rate → resample if needed → raw PCM
       const wavBuffer = Buffer.from(audios[0], 'base64');
-      return stripWavHeader(wavBuffer);
+      return extractAndResamplePcm(wavBuffer, sampleRate);
     } catch (err) {
       lastError = err;
       const status = err.response?.status;
@@ -112,15 +112,64 @@ async function synthesizeChunk(text, sampleRate) {
 }
 
 /**
- * Strip the 44-byte WAV header to get raw PCM bytes
+ * Parse a WAV buffer: validate sample rate, resample to targetRate if needed, return raw PCM.
+ * This is critical — if Sarvam returns 24kHz audio but we send it to Exotel (which plays
+ * at 8kHz), the audio plays 3× slower. We must resample to the exact target rate.
  */
-function stripWavHeader(wavBuffer) {
-  // Standard WAV header is 44 bytes (for simple PCM)
-  // Find 'data' chunk marker for robustness
-  const dataMarker = wavBuffer.indexOf('data', 36);
-  if (dataMarker === -1) return wavBuffer.slice(44);
-  // data chunk: 4 bytes marker + 4 bytes size = skip 8 bytes after marker
-  return wavBuffer.slice(dataMarker + 8);
+function extractAndResamplePcm(wavBuffer, targetRate) {
+  // Read sample rate from WAV header (bytes 24-27, little-endian uint32)
+  if (wavBuffer.length < 44) return wavBuffer;
+
+  const actualRate = wavBuffer.readUInt32LE(24);
+  const numChannels = wavBuffer.readUInt16LE(22);
+  const bitsPerSample = wavBuffer.readUInt16LE(34);
+
+  // Find the 'data' chunk
+  let dataOffset = 12;
+  while (dataOffset < wavBuffer.length - 8) {
+    const chunkId = wavBuffer.slice(dataOffset, dataOffset + 4).toString('ascii');
+    const chunkSize = wavBuffer.readUInt32LE(dataOffset + 4);
+    if (chunkId === 'data') {
+      dataOffset += 8;
+      break;
+    }
+    dataOffset += 8 + chunkSize;
+  }
+
+  const pcmData = wavBuffer.slice(dataOffset);
+
+  if (actualRate !== targetRate) {
+    console.warn(`[TTS] Sample rate mismatch! Sarvam returned ${actualRate}Hz, Exotel needs ${targetRate}Hz — resampling...`);
+    return resample16BitMono(pcmData, actualRate, targetRate);
+  }
+
+  return pcmData;
+}
+
+/**
+ * Resample 16-bit signed little-endian mono PCM from sourceRate to targetRate.
+ * Uses linear interpolation for good quality at low CPU cost.
+ */
+function resample16BitMono(pcmData, sourceRate, targetRate) {
+  const srcSamples = pcmData.length / 2;
+  const ratio = sourceRate / targetRate;
+  const dstSamples = Math.floor(srcSamples / ratio);
+  const output = Buffer.alloc(dstSamples * 2);
+
+  for (let i = 0; i < dstSamples; i++) {
+    const srcPos = i * ratio;
+    const srcIdx = Math.floor(srcPos);
+    const frac = srcPos - srcIdx;
+    const nextIdx = Math.min(srcIdx + 1, srcSamples - 1);
+
+    const a = pcmData.readInt16LE(srcIdx * 2);
+    const b = pcmData.readInt16LE(nextIdx * 2);
+    const interpolated = Math.round(a + frac * (b - a));
+    const clamped = Math.max(-32768, Math.min(32767, interpolated));
+    output.writeInt16LE(clamped, i * 2);
+  }
+
+  return output;
 }
 
 /**
