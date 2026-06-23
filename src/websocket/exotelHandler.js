@@ -79,7 +79,12 @@ function handleExotelConnection(ws, req) {
 
         // Greet the caller
         await speakResponse(ws, session,
-          'Hello! Welcome to Exotel internal support. How can I help you today?', true);
+          'Hello! Thank you for calling Exotel Internal Support. My name is Asha, your AI-powered support assistant. ' +
+          'I\'m here to help you with any questions or issues related to your Exotel account, including call flows, ' +
+          'API integrations, billing, agent stream setup, and general troubleshooting. ' +
+          'I can understand your queries and provide you with accurate information from our support documentation. ' +
+          'Please go ahead and tell me how I can assist you today — take your time, and I\'ll do my best to help you resolve your issue as quickly as possible.',
+          true);
         break;
       }
 

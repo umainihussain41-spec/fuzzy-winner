@@ -361,7 +361,10 @@ function restoreInputs() {
 }
 
 // ── TTS Audio Quality Comparison ───────────────────────────────────────────────────
-let ttsEntries = [];
+let ttsEntries     = [];
+let autoPlayEnabled = true;       // auto-play Sarvam WAV through dashboard speakers
+let autoPlayCtx     = null;       // Web Audio context for auto-play
+let autoPlayNext    = 0;          // scheduled playback time
 
 function addTtsEntry(msg) {
   ttsEntries.unshift(msg);
@@ -377,13 +380,18 @@ function addTtsEntry(msg) {
 
   const now = new Date();
   const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const entryId = 'tts-' + Date.now();
 
   const entry = document.createElement('div');
   entry.className = 'tts-entry';
+  entry.id = entryId;
   entry.innerHTML = `
     <div class="tts-entry-label">
       <span>🤖 ${escapeHtml(msg.sessionId)} &nbsp;&middot;&nbsp; ${timeStr}</span>
-      ${msg.isGreeting ? '<span class="tts-badge-greeting">GREETING</span>' : ''}
+      <span style="display:flex;align-items:center;gap:6px;">
+        ${msg.isGreeting ? '<span class="tts-badge-greeting">GREETING</span>' : ''}
+        <span class="tts-now-playing" id="np-${entryId}" style="display:none;">▶ PLAYING</span>
+      </span>
     </div>
     <div class="tts-entry-text">&ldquo;${escapeHtml(truncate(msg.text, 120))}&rdquo;</div>
     <div class="tts-players">
@@ -403,6 +411,61 @@ function addTtsEntry(msg) {
   // Clear placeholder if first entry
   if (ttsEntries.length === 1) log.innerHTML = '';
   log.insertBefore(entry, log.firstChild);
+
+  // ── Auto-play through dashboard speakers ──────────────────────────────────
+  if (autoPlayEnabled && msg.wavBase64) {
+    autoPlayWav(msg.wavBase64, entryId);
+  }
+}
+
+/** Decode WAV base64 and play immediately through Web Audio */
+async function autoPlayWav(base64, entryId) {
+  try {
+    if (!autoPlayCtx) {
+      autoPlayCtx = new AudioContext();
+      autoPlayNext = autoPlayCtx.currentTime;
+    }
+    if (autoPlayCtx.state === 'suspended') await autoPlayCtx.resume();
+
+    // Decode full WAV
+    const binary = atob(base64);
+    const bytes   = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+    const audioBuffer = await autoPlayCtx.decodeAudioData(bytes.buffer.slice(0));
+
+    const src = autoPlayCtx.createBufferSource();
+    src.buffer = audioBuffer;
+    src.connect(autoPlayCtx.destination);
+
+    const now = autoPlayCtx.currentTime;
+    if (autoPlayNext < now) autoPlayNext = now + 0.05;
+    src.start(autoPlayNext);
+
+    // Show NOW PLAYING indicator
+    const npEl = document.getElementById('np-' + entryId);
+    if (npEl) npEl.style.display = 'inline-flex';
+    src.onended = () => { if (npEl) npEl.style.display = 'none'; };
+
+    autoPlayNext += audioBuffer.duration;
+  } catch (e) {
+    console.warn('[AutoPlay] Error:', e);
+  }
+}
+
+function toggleAutoPlay() {
+  autoPlayEnabled = !autoPlayEnabled;
+  const btn = document.getElementById('autoPlayToggle');
+  if (btn) {
+    btn.textContent  = autoPlayEnabled ? '🔊 Auto-Play ON'  : '🔇 Auto-Play OFF';
+    btn.style.color  = autoPlayEnabled ? 'var(--green)'     : 'var(--text3)';
+    btn.style.borderColor = autoPlayEnabled ? 'var(--green)' : 'var(--border)';
+  }
+  if (!autoPlayEnabled && autoPlayCtx) {
+    autoPlayCtx.close();
+    autoPlayCtx = null;
+    autoPlayNext = 0;
+  }
 }
 
 /** Decode base64 WAV and return a blob URL the browser can play */

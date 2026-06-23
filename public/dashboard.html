@@ -719,6 +719,23 @@
       accent-color: var(--accent);
     }
 
+    .tts-now-playing {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      color: var(--green);
+      background: rgba(16,185,129,0.12);
+      border: 1px solid rgba(16,185,129,0.3);
+      border-radius: 4px;
+      padding: 2px 6px;
+      animation: np-blink 1s ease-in-out infinite;
+    }
+
+    @keyframes np-blink {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.4; }
+    }
+
     .tts-badge-greeting {
       font-size: 9px;
       padding: 2px 6px;
@@ -1094,7 +1111,13 @@
       <div class="panel-title">🎧 TTS Quality Comparison
         <span style="font-size:11px;font-weight:400;color:var(--text3);margin-left:4px;">Sarvam 24kHz full quality vs Exotel 24kHz phone line</span>
       </div>
-      <button onclick="clearTtsLog()" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:12px;">Clear</button>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <button id="autoPlayToggle" onclick="toggleAutoPlay()"
+          style="background:none;border:1px solid var(--green);color:var(--green);cursor:pointer;font-size:11px;border-radius:6px;padding:3px 10px;font-family:inherit;transition:all 0.2s;">
+          🔊 Auto-Play ON
+        </button>
+        <button onclick="clearTtsLog()" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:12px;">Clear</button>
+      </div>
     </div>
     <div class="tts-log" id="ttsLog">
       <div style="text-align:center;padding:30px;color:var(--text3);font-size:12px;">
