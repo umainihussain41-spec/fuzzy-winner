@@ -50,10 +50,7 @@ async function synthesizeChunk(text) {
           model: 'bulbul:v3',
           properties: {
             pace: 1.0,
-            pitch: 0,
-            loudness: 1.5,
             speech_sample_rate: 8000,   // 8kHz for telephony (matches Exotel)
-            enable_preprocessing: true,  // Handles numbers, abbreviations naturally
           },
         },
         {

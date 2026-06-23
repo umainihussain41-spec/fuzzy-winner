@@ -62,7 +62,7 @@ async function trySupportSearch(query) {
     const $ = cheerio.load(html);
 
     // Find first search result article link
-    const firstLink = $('a.article-list-link, .search-results a, h3.summary a').first().attr('href');
+    const firstLink = $('.article-item a, a[href*="/solutions/articles/"]').first().attr('href');
     if (!firstLink) {
       // If no results page, try scraping the main support page
       return await scrapeArticlePage('https://support.exotel.com', query);

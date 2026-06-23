@@ -29,7 +29,7 @@ async function speechToText(audioBuffer, lang = 'en-IN') {
     filename: 'audio.wav',
     contentType: 'audio/wav',
   });
-  form.append('model', 'saarika:v2');
+  form.append('model', 'saarika:v2.5');
   form.append('language_code', lang);
   form.append('with_timestamps', 'false');
 
