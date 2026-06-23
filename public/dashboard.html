@@ -727,6 +727,169 @@
       border: 1px solid rgba(99,102,241,0.3);
       color: #a5b4fc;
     }
+
+    /* Web Call Test Panel */
+    .webcall-body {
+      padding: 28px 24px;
+      display: flex;
+      align-items: center;
+      gap: 40px;
+    }
+
+    .webcall-left {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      min-width: 160px;
+    }
+
+    .webcall-ring-wrap {
+      position: relative;
+      width: 96px;
+      height: 96px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .webcall-ring {
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .webcall-ring.listening {
+      background: radial-gradient(circle, rgba(16,185,129,0.25) 0%, transparent 70%);
+      animation: ring-pulse 1.6s ease-out infinite;
+      opacity: 1;
+    }
+
+    .webcall-ring.bot-speaking {
+      background: radial-gradient(circle, rgba(99,102,241,0.3) 0%, transparent 70%);
+      animation: ring-pulse 0.9s ease-out infinite;
+      opacity: 1;
+    }
+
+    @keyframes ring-pulse {
+      0%   { transform: scale(0.85); opacity: 0.7; }
+      70%  { transform: scale(1.6);  opacity: 0; }
+      100% { transform: scale(1.6);  opacity: 0; }
+    }
+
+    .webcall-mic-btn {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      border: none;
+      font-size: 26px;
+      cursor: pointer;
+      transition: all 0.25s;
+      position: relative;
+      z-index: 1;
+      background: linear-gradient(135deg, var(--accent), var(--accent3));
+      box-shadow: 0 4px 24px rgba(99,102,241,0.4);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: inherit;
+    }
+
+    .webcall-mic-btn:hover { transform: scale(1.06); box-shadow: 0 6px 28px rgba(99,102,241,0.55); }
+    .webcall-mic-btn:active { transform: scale(0.97); }
+
+    .webcall-mic-btn.active {
+      background: linear-gradient(135deg, #10b981, #059669);
+      box-shadow: 0 4px 24px rgba(16,185,129,0.45);
+    }
+
+    .webcall-mic-btn.bot-speaking {
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      box-shadow: 0 4px 24px rgba(139,92,246,0.45);
+    }
+
+    .webcall-mic-btn.loading {
+      background: var(--card2);
+      box-shadow: none;
+      cursor: wait;
+      font-size: 20px;
+    }
+
+    .webcall-mic-btn.end {
+      background: linear-gradient(135deg, #ef4444, #dc2626);
+      box-shadow: 0 4px 24px rgba(239,68,68,0.4);
+    }
+
+    .webcall-state-label {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      text-align: center;
+    }
+
+    .webcall-state-label.idle        { color: var(--text3); }
+    .webcall-state-label.listening   { color: var(--green); }
+    .webcall-state-label.bot-speaking { color: #a5b4fc; }
+    .webcall-state-label.loading     { color: var(--text3); }
+    .webcall-state-label.error       { color: var(--red); }
+
+    .webcall-right {
+      flex: 1;
+    }
+
+    .webcall-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+
+    .webcall-desc {
+      font-size: 12px;
+      color: var(--text2);
+      line-height: 1.6;
+      margin-bottom: 14px;
+    }
+
+    .webcall-steps {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .webcall-step {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: var(--text3);
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 5px 10px;
+    }
+
+    .webcall-step .dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+
+    .webcall-status-row {
+      margin-top: 12px;
+      font-size: 12px;
+      color: var(--text3);
+      min-height: 18px;
+      transition: color 0.2s;
+    }
+
+    .webcall-status-row.listening   { color: var(--green); }
+    .webcall-status-row.bot-speaking { color: #a5b4fc; }
+    .webcall-status-row.error       { color: var(--red); }
   </style>
 </head>
 <body>
@@ -781,6 +944,34 @@
       <div class="stat-label">Uptime</div>
       <div class="stat-value" id="statUptime">—</div>
       <div class="stat-sub">Server running</div>
+    </div>
+  </div>
+
+  <!-- Web Call Test Panel -->
+  <div class="panel" style="margin-bottom:20px;" id="webCallPanel">
+    <div class="panel-header">
+      <div class="panel-title">🎤 Web Call Test <span style="font-size:11px;font-weight:400;color:var(--text3);margin-left:4px;">Talk to Asha from your browser — no phone needed</span></div>
+    </div>
+    <div class="webcall-body">
+      <div class="webcall-left">
+        <div class="webcall-ring-wrap">
+          <div class="webcall-ring" id="webCallRing"></div>
+          <button class="webcall-mic-btn" id="webCallBtn" onclick="handleWebCallBtn()">🎤</button>
+        </div>
+        <div class="webcall-state-label idle" id="webCallStateLabel">Idle</div>
+      </div>
+      <div class="webcall-right">
+        <div class="webcall-title">Browser-to-Bot Voice Test</div>
+        <div class="webcall-desc">Click the mic button to open a live WebSocket call to the bot — bypassing Exotel entirely. Your browser mic captures your voice, sends it through the same STT → LLM → TTS pipeline, and plays the bot's response back through your speakers.</div>
+        <div class="webcall-steps">
+          <div class="webcall-step"><div class="dot"></div> Mic → 8kHz PCM</div>
+          <div class="webcall-step"><div class="dot" style="background:var(--green)"></div> Sarvam STT</div>
+          <div class="webcall-step"><div class="dot" style="background:var(--yellow)"></div> Groq LLM</div>
+          <div class="webcall-step"><div class="dot" style="background:var(--orange)"></div> Sarvam TTS</div>
+          <div class="webcall-step"><div class="dot" style="background:#a5b4fc"></div> Browser Playback</div>
+        </div>
+        <div class="webcall-status-row" id="webCallStatusRow">Ready — click the mic to begin</div>
+      </div>
     </div>
   </div>
 

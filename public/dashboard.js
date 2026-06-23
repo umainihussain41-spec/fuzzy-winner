@@ -489,7 +489,211 @@ function clearTtsLog() {
   log.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text3);font-size:12px;">🎤 Waiting for bot to speak…</div>';
 }
 
+// ── Web Call Test ─────────────────────────────────────────────────────────────
+let wcWs            = null;   // WebSocket to /stream
+let wcStream        = null;   // MediaStream (mic)
+let wcAudioCtx      = null;   // AudioContext for capture
+let wcSourceNode    = null;
+let wcProcessor     = null;
+let wcPlayCtx       = null;   // AudioContext for playback
+let wcNextPlayTime  = 0;
+let wcActive        = false;
+let wcBotSpeakTimer = null;
+let wcState         = 'idle'; // idle | loading | listening | bot-speaking | error
+
+function handleWebCallBtn() {
+  if (wcState === 'idle' || wcState === 'error') startWebCall();
+  else stopWebCall();
+}
+
+async function startWebCall() {
+  setWcState('loading', '⏳ Requesting microphone…');
+  try {
+    wcStream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+    });
+  } catch (err) {
+    setWcState('error', `❌ Mic denied: ${err.message}`);
+    return;
+  }
+
+  setWcState('loading', '⏳ Connecting to bot…');
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  wcWs = new WebSocket(`${proto}//${location.host}/stream?sample-rate=8000`);
+
+  wcWs.onopen = () => {
+    wcActive = true;
+    // Simulate Exotel handshake
+    wcWs.send(JSON.stringify({ event: 'connected', protocol: 'web-test' }));
+    wcWs.send(JSON.stringify({
+      event: 'start',
+      start: {
+        call_sid:   'WEB_' + Date.now(),
+        stream_sid: 'ST_'  + Date.now(),
+        from:       'WEB_DASHBOARD',
+        customParameters: { from: 'WEB_DASHBOARD' },
+      },
+    }));
+    wcStartCapture();
+    setWcState('listening', '🎙️ Listening — speak now, pause when done');
+  };
+
+  wcWs.onmessage = (evt) => {
+    try {
+      const msg = JSON.parse(evt.data);
+      if (msg.event === 'media' && msg.media?.payload) {
+        wcPlayChunk(msg.media.payload);
+        setWcState('bot-speaking', '🤖 Bot speaking — listen…');
+        clearTimeout(wcBotSpeakTimer);
+        // Revert to listening ~600ms after last audio chunk
+        wcBotSpeakTimer = setTimeout(() => {
+          if (wcActive) setWcState('listening', '🎙️ Listening — speak now, pause when done');
+        }, 600);
+      }
+    } catch {}
+  };
+
+  wcWs.onclose  = () => { if (wcActive) stopWebCall(); };
+  wcWs.onerror  = () => { setWcState('error', '❌ WebSocket error'); stopWebCall(); };
+}
+
+function wcStartCapture() {
+  wcAudioCtx   = new AudioContext();
+  wcSourceNode = wcAudioCtx.createMediaStreamSource(wcStream);
+  // ScriptProcessor: 4096 frames, 1 in, 1 out
+  wcProcessor  = wcAudioCtx.createScriptProcessor(4096, 1, 1);
+
+  wcProcessor.onaudioprocess = (evt) => {
+    if (!wcWs || wcWs.readyState !== 1 || !wcActive) return;
+    const f32     = evt.inputBuffer.getChannelData(0);
+    const nativeSR = wcAudioCtx.sampleRate;
+    const pcm8k   = wcDownsample(f32, nativeSR, 8000);
+    const int16   = wcF32ToI16(pcm8k);
+    const b64     = wcI16ToB64(int16);
+    wcWs.send(JSON.stringify({ event: 'media', media: { payload: b64 } }));
+  };
+
+  wcSourceNode.connect(wcProcessor);
+  wcProcessor.connect(wcAudioCtx.destination); // needed for ScriptProcessor to fire
+}
+
+function stopWebCall() {
+  wcActive = false;
+  clearTimeout(wcBotSpeakTimer);
+
+  if (wcProcessor)  { wcProcessor.disconnect();  wcProcessor  = null; }
+  if (wcSourceNode) { wcSourceNode.disconnect();  wcSourceNode = null; }
+  if (wcAudioCtx)   { wcAudioCtx.close();         wcAudioCtx   = null; }
+  if (wcStream)     { wcStream.getTracks().forEach(t => t.stop()); wcStream = null; }
+  if (wcWs && wcWs.readyState <= 1) {
+    try { wcWs.send(JSON.stringify({ event: 'stop' })); } catch {}
+    wcWs.close();
+  }
+  wcWs         = null;
+  wcPlayCtx    = null;
+  wcNextPlayTime = 0;
+  setWcState('idle', 'Ready — click the mic to begin');
+}
+
+function wcPlayChunk(base64) {
+  try {
+    const bin   = atob(base64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+
+    const i16  = new Int16Array(bytes.buffer);
+    const f32  = new Float32Array(i16.length);
+    for (let i = 0; i < i16.length; i++) f32[i] = i16[i] / 32768.0;
+
+    // Use default AudioContext — Web Audio upsamples internally from 8kHz buffer
+    if (!wcPlayCtx) {
+      wcPlayCtx     = new AudioContext();
+      wcNextPlayTime = wcPlayCtx.currentTime + 0.05;
+    }
+
+    const buf = wcPlayCtx.createBuffer(1, f32.length, 8000);
+    buf.getChannelData(0).set(f32);
+
+    const src = wcPlayCtx.createBufferSource();
+    src.buffer = buf;
+    src.connect(wcPlayCtx.destination);
+
+    const now = wcPlayCtx.currentTime;
+    if (wcNextPlayTime < now) wcNextPlayTime = now + 0.05;
+    src.start(wcNextPlayTime);
+    wcNextPlayTime += buf.duration;
+  } catch (e) { console.warn('[WebCall] Playback error:', e); }
+}
+
+// ── Audio helpers ────────────────────────────────────────────────────────────
+function wcDownsample(input, srcRate, dstRate) {
+  if (srcRate === dstRate) return input;
+  const ratio  = srcRate / dstRate;
+  const outLen = Math.floor(input.length / ratio);
+  const out    = new Float32Array(outLen);
+  for (let i = 0; i < outLen; i++) {
+    const pos  = i * ratio;
+    const idx  = Math.floor(pos);
+    const frac = pos - idx;
+    const a    = input[idx]  || 0;
+    const b    = input[Math.min(idx + 1, input.length - 1)] || 0;
+    out[i]     = a + frac * (b - a);
+  }
+  return out;
+}
+
+function wcF32ToI16(f32) {
+  const i16 = new Int16Array(f32.length);
+  for (let i = 0; i < f32.length; i++) {
+    const s = Math.max(-1, Math.min(1, f32[i]));
+    i16[i]  = s < 0 ? s * 32768 : s * 32767;
+  }
+  return i16;
+}
+
+function wcI16ToB64(i16) {
+  const bytes  = new Uint8Array(i16.buffer);
+  let   binary = '';
+  for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+
+function setWcState(state, statusText) {
+  wcState = state;
+  const btn    = document.getElementById('webCallBtn');
+  const label  = document.getElementById('webCallStateLabel');
+  const ring   = document.getElementById('webCallRing');
+  const status = document.getElementById('webCallStatusRow');
+
+  if (!btn) return;
+
+  // Button icon + class
+  const icons = { idle: '🎤', loading: '⏳', listening: '🛑', 'bot-speaking': '🛑', error: '🎤' };
+  btn.textContent = icons[state] || '🎤';
+  btn.className   = 'webcall-mic-btn ' + (
+    state === 'listening'    ? 'active' :
+    state === 'bot-speaking' ? 'bot-speaking' :
+    state === 'loading'      ? 'loading' :
+    state === 'error'        ? '' : ''
+  );
+
+  // State label
+  const labels = { idle: 'Idle', loading: 'Connecting…', listening: 'Listening', 'bot-speaking': 'Bot Speaking', error: 'Error' };
+  label.textContent = labels[state] || state;
+  label.className   = `webcall-state-label ${state}`;
+
+  // Ring animation
+  ring.className = 'webcall-ring ' + (state === 'listening' || state === 'bot-speaking' ? state : '');
+
+  // Status text
+  if (status) {
+    status.textContent = statusText || '';
+    status.className   = `webcall-status-row ${state}`;
+  }
+}
+
 // ── Init ─────────────────────────────────────────────────────────────────
 connectDashboard();
 startUptimeTicker();
 restoreInputs();
+
