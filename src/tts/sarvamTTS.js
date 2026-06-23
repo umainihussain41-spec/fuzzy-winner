@@ -40,10 +40,11 @@ const LANGUAGE = process.env.SARVAM_LANGUAGE || 'en-IN';
  * Returns a Buffer of raw 16-bit PCM mono audio suitable for Exotel
  *
  * @param {string} text       - Text to synthesize (max 2500 chars)
- * @param {number} sampleRate - Target sample rate (default 24000Hz for best quality)
+ * @param {number} sampleRate - Target sample rate — request exactly what Exotel needs
+ *                              so Sarvam applies proper telephony filtering in one step.
  * @returns {Promise<Buffer>} - Raw PCM audio buffer (16-bit signed, little-endian, mono)
  */
-async function textToSpeech(text, sampleRate = 24000) {
+async function textToSpeech(text, sampleRate = 8000) {
   if (!SARVAM_API_KEY) throw new Error('SARVAM_API_KEY not set in environment');
   if (!text || text.trim().length === 0) throw new Error('Empty text for TTS');
 
@@ -102,9 +103,10 @@ async function textToSpeechRaw(text) {
 }
 
 async function synthesizeChunk(text, targetRate) {
-  // Always request at 24kHz from Sarvam (bulbul:v3 native best quality).
-  // extractAndResamplePcm reads the WAV header and resamples to targetRate if needed.
-  const SARVAM_REQUEST_RATE = 24000;
+  // Request exactly at targetRate from Sarvam.
+  // For phone calls (8kHz): Sarvam applies its own high-quality telephony
+  // low-pass filter in ONE step — cleaner than generating at 24kHz and
+  // having Exotel resample again (two lossy conversions = more artifacts).
   let lastError;
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
@@ -115,7 +117,7 @@ async function synthesizeChunk(text, targetRate) {
           target_language_code: LANGUAGE,
           speaker: SPEAKER,
           model: 'bulbul:v3',
-          speech_sample_rate: SARVAM_REQUEST_RATE,
+          speech_sample_rate: targetRate,
           properties: {
             pace: 1.0,
           },
@@ -135,7 +137,7 @@ async function synthesizeChunk(text, targetRate) {
         throw new Error('No audio in TTS response');
       }
 
-      // Decode base64 WAV → resample to targetRate if needed → raw PCM
+      // Decode base64 WAV → resample to targetRate if WAV header differs
       const wavBuffer = Buffer.from(audios[0], 'base64');
       return extractAndResamplePcm(wavBuffer, targetRate);
     } catch (err) {
