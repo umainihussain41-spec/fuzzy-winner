@@ -152,11 +152,16 @@ function resetSilenceTimer(ws, session) {
     // Minimum audio threshold: ignore very short clips (< 300ms)
     if (audioBuffer.length < session.bytesPerMs * 300) return;
 
-    // Apply voice isolation: Bandpass filter (300Hz - 3400Hz) & Noise Gate
-    audioBuffer = isolateVoice(audioBuffer, session.sampleRate);
+    // Check RMS energy — skip if audio is near-silent (no actual speech)
+    const rms = computeRms(audioBuffer);
+    console.log(`[${session.id}] Audio RMS energy: ${rms.toFixed(1)} (threshold: 80)`);
+    if (rms < 80) {
+      console.log(`[${session.id}] Skipping — audio below RMS threshold (silence/noise)`);
+      return;
+    }
 
     session.isProcessing = true;
-    console.log(`[${session.id}] Processing ${audioBuffer.length} bytes of filtered audio...`);
+    console.log(`[${session.id}] Processing ${audioBuffer.length} bytes of audio...`);
 
     try {
       const { transcript, botResponse, scraperUsed } = await runPipeline(
@@ -297,56 +302,19 @@ function sleep(ms) {
 }
 
 /**
- * Applies a simple bandpass filter (300Hz - 3400Hz) and a noise gate to raw 16-bit PCM audio.
- * This isolates human speech frequencies and suppresses low-amplitude background noise.
+ * Compute RMS (Root Mean Square) energy of a 16-bit mono PCM buffer.
+ * Returns a value from 0 (silence) to 32767 (full scale).
  */
-function isolateVoice(pcmBuffer, sampleRate) {
+function computeRms(pcmBuffer) {
   const numSamples = pcmBuffer.length / 2;
-  const outputBuffer = Buffer.alloc(pcmBuffer.length);
-  
-  // Cutoff frequencies for speech band (in Hz)
-  const fLow = 300;
-  const fHigh = 3400;
-  
-  // Bandpass filter coefficients (using simplified RC-based filters)
-  const dt = 1.0 / sampleRate;
-  const rcLow = 1.0 / (2 * Math.PI * fLow);
-  const alphaHigh = rcLow / (rcLow + dt);
-  
-  const rcHigh = 1.0 / (2 * Math.PI * fHigh);
-  const alphaLow = dt / (rcHigh + dt);
-  
-  let prevRaw = 0;
-  let prevHigh = 0;
-  let prevLow = 0;
-  
-  // Noise gate threshold: 16-bit sample amplitude threshold (0 to 32767)
-  const GATE_THRESHOLD = 300; 
-  
+  if (numSamples === 0) return 0;
+  let sumOfSquares = 0;
   for (let i = 0; i < numSamples; i++) {
     if (i * 2 + 1 >= pcmBuffer.length) break;
     const sample = pcmBuffer.readInt16LE(i * 2);
-    
-    // 1. High-pass filter (remove low rumble below 300Hz)
-    const highFiltered = alphaHigh * (prevHigh + sample - prevRaw);
-    prevRaw = sample;
-    prevHigh = highFiltered;
-    
-    // 2. Low-pass filter (remove high sizzle above 3400Hz)
-    const lowFiltered = prevLow + alphaLow * (highFiltered - prevLow);
-    prevLow = lowFiltered;
-    
-    // 3. Noise Gate (suppress low volume background noise)
-    let outputSample = lowFiltered;
-    if (Math.abs(outputSample) < GATE_THRESHOLD) {
-      outputSample = outputSample * 0.1; // attenuate by 90%
-    }
-    
-    const clampedSample = Math.max(-32768, Math.min(32767, Math.round(outputSample)));
-    outputBuffer.writeInt16LE(clampedSample, i * 2);
+    sumOfSquares += sample * sample;
   }
-  
-  return outputBuffer;
+  return Math.sqrt(sumOfSquares / numSamples);
 }
 
 module.exports = { handleExotelConnection };
