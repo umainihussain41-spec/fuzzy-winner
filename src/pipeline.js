@@ -24,12 +24,12 @@ const SEARCH_TRIGGER = /^SEARCH_NEEDED:\s*(.+)/i;
  * @param {string} sessionId            - For logging
  * @returns {Promise<{transcript, botResponse, scraperUsed}>}
  */
-async function runPipeline(audioBuffer, conversationHistory, sessionId) {
+async function runPipeline(audioBuffer, conversationHistory, sessionId, sampleRate = 8000) {
   const log = (msg) => console.log(`[Pipeline:${sessionId}] ${msg}`);
 
   // ── Step 1: Speech → Text ──────────────────────────────────────────────────
   log('Running STT...');
-  const transcript = await speechToText(audioBuffer);
+  const transcript = await speechToText(audioBuffer, 'en-IN', sampleRate);
 
   if (!transcript || transcript.trim().length < 2) {
     log('STT returned empty transcript — skipping');

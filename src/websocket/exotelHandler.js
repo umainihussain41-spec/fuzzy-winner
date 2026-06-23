@@ -17,12 +17,14 @@ const { runPipeline } = require('../pipeline');
 
 // VAD: collect audio until silence detected for VAD_SILENCE_MS
 const VAD_SILENCE_MS = parseInt(process.env.VAD_SILENCE_MS || '700', 10);
-const SAMPLE_RATE = 8000;           // Exotel uses 8kHz 16-bit PCM mono (Linear16)
-const BYTES_PER_MS = (SAMPLE_RATE / 1000) * 2;  // 16 bytes per ms for 16-bit signed PCM mono
-
 function handleExotelConnection(ws, req) {
+  const urlObj = new URL(req.url || '', 'http://localhost');
+  const sampleRateParam = urlObj.searchParams.get('sample-rate') || urlObj.searchParams.get('sample_rate') || '8000';
+  const sampleRate = parseInt(sampleRateParam, 10);
+  const bytesPerMs = (sampleRate / 1000) * 2;
+
   const sessionId = randomUUID().slice(0, 8);
-  console.log(`[${sessionId}] New Exotel connection`);
+  console.log(`[${sessionId}] New Exotel connection | sample-rate: ${sampleRate}Hz`);
 
   // ── Session state ──────────────────────────────────────────────────────────
   const session = {
@@ -34,6 +36,8 @@ function handleExotelConnection(ws, req) {
     conversationHistory: [],
     turns: [],
     scraperUsed: false,
+    sampleRate,
+    bytesPerMs,
 
     // Audio buffering
     audioChunks: [],
@@ -146,7 +150,7 @@ function resetSilenceTimer(ws, session) {
     session.silenceTimer = null;
 
     // Minimum audio threshold: ignore very short clips (< 300ms)
-    if (audioBuffer.length < BYTES_PER_MS * 300) return;
+    if (audioBuffer.length < session.bytesPerMs * 300) return;
 
     session.isProcessing = true;
     console.log(`[${session.id}] Processing ${audioBuffer.length} bytes of audio...`);
@@ -155,7 +159,8 @@ function resetSilenceTimer(ws, session) {
       const { transcript, botResponse, scraperUsed } = await runPipeline(
         audioBuffer,
         session.conversationHistory,
-        session.id
+        session.id,
+        session.sampleRate
       );
 
       if (!transcript || transcript.trim().length < 2) {
@@ -199,22 +204,27 @@ async function speakResponse(ws, session, text, isGreeting) {
   session.isSpeaking = true;
 
   try {
-    const audioBuffer = await textToSpeech(text);
+    const audioBuffer = await textToSpeech(text, session.sampleRate);
     if (aborted) return;
 
-    // Send audio in chunks of 3,200 bytes (200ms of 8kHz 16-bit PCM)
-    // This satisfies Exotel's constraints:
+    // Calculate chunk size dynamically based on sample rate (~200ms chunk)
+    // Satisfies Exotel's constraints:
     //   1. Payload size must be between 3,200 and 100,000 bytes
     //   2. Chunk size must always be a multiple of 320 bytes
-    const CHUNK_SIZE = 3200;
-    const msPerChunk = (CHUNK_SIZE / (SAMPLE_RATE * 2)) * 1000; // 200ms
+    const targetDurationSec = 0.200; // 200ms
+    let rawChunkSize = Math.floor(session.sampleRate * 2 * targetDurationSec);
+    let CHUNK_SIZE = Math.round(rawChunkSize / 320) * 320;
+    if (CHUNK_SIZE < 3200) CHUNK_SIZE = 3200;
+    if (CHUNK_SIZE > 100000) CHUNK_SIZE = 100000;
+
+    const msPerChunk = (CHUNK_SIZE / (session.sampleRate * 2)) * 1000;
 
     for (let i = 0; i < audioBuffer.length; i += CHUNK_SIZE) {
       if (aborted || ws.readyState !== 1) break;
 
       let chunk = audioBuffer.slice(i, i + CHUNK_SIZE);
 
-      // If last chunk is smaller than 3,200 bytes, pad it with PCM silence (0)
+      // If last chunk is smaller than CHUNK_SIZE, pad it with PCM silence (0)
       if (chunk.length < CHUNK_SIZE) {
         const padding = Buffer.alloc(CHUNK_SIZE - chunk.length, 0);
         chunk = Buffer.concat([chunk, padding]);

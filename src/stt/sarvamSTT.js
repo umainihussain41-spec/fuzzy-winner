@@ -18,11 +18,11 @@ const SARVAM_API_KEY = process.env.SARVAM_API_KEY;
  * @param {string} [lang]       - Language code (default: en-IN)
  * @returns {Promise<string>}   - Transcript string
  */
-async function speechToText(audioBuffer, lang = 'en-IN') {
+async function speechToText(audioBuffer, lang = 'en-IN', sampleRate = 8000) {
   if (!SARVAM_API_KEY) throw new Error('SARVAM_API_KEY not set in environment');
 
-  // Wrap raw PCM in WAV container (8kHz, mono, 16-bit PCM)
-  const wavBuffer = buildWavHeader(audioBuffer, 8000, 1, 16);
+  // Wrap raw PCM in WAV container (mono, 16-bit PCM)
+  const wavBuffer = buildWavHeader(audioBuffer, sampleRate, 1, 16);
 
   const form = new FormData();
   form.append('file', wavBuffer, {

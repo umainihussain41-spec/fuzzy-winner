@@ -42,7 +42,7 @@ const LANGUAGE = process.env.SARVAM_LANGUAGE || 'en-IN';
  * @param {string} text       - Text to synthesize (max 2500 chars)
  * @returns {Promise<Buffer>} - Raw PCM audio buffer (16-bit signed, little-endian, mono)
  */
-async function textToSpeech(text) {
+async function textToSpeech(text, sampleRate = 8000) {
   if (!SARVAM_API_KEY) throw new Error('SARVAM_API_KEY not set in environment');
   if (!text || text.trim().length === 0) throw new Error('Empty text for TTS');
 
@@ -51,14 +51,14 @@ async function textToSpeech(text) {
   const audioBuffers = [];
 
   for (const chunk of chunks) {
-    const buf = await synthesizeChunk(chunk);
+    const buf = await synthesizeChunk(chunk, sampleRate);
     audioBuffers.push(buf);
   }
 
   return Buffer.concat(audioBuffers);
 }
 
-async function synthesizeChunk(text) {
+async function synthesizeChunk(text, sampleRate) {
   let lastError;
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
@@ -71,7 +71,7 @@ async function synthesizeChunk(text) {
           model: 'bulbul:v3',
           properties: {
             pace: 1.0,
-            speech_sample_rate: 8000,   // 8kHz for telephony (matches Exotel)
+            speech_sample_rate: sampleRate,   // Matches Exotel session sample rate
           },
         },
         {
