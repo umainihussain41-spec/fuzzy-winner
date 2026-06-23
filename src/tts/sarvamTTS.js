@@ -10,8 +10,29 @@ const SARVAM_TTS_URL = 'https://api.sarvam.ai/text-to-speech';
 const SARVAM_API_KEY = process.env.SARVAM_API_KEY;
 
 // Indian English voices available in bulbul:v3
-// Options: anushka, manisha, vidya, arjun, abhilash, karun, hitesh
-const SPEAKER = process.env.SARVAM_SPEAKER || 'anushka';
+// Common options: shubh, aditya, ritu, priya, neha, rahul, pooja, rohan, simran, kavya
+const rawSpeaker = (process.env.SARVAM_SPEAKER || 'shubh').toLowerCase();
+const BULBUL_V3_SPEAKERS = [
+  'shubh', 'aditya', 'ritu', 'priya', 'neha', 'rahul', 'pooja', 'rohan', 'simran',
+  'kavya', 'amit', 'dev', 'ishita', 'shreya', 'ratan', 'varun', 'manan', 'sumit',
+  'roopa', 'kabir', 'aayan', 'ashutosh', 'advait', 'anand', 'tanya', 'tarun',
+  'sunny', 'mani', 'gokul', 'vijay', 'shruti', 'suhani', 'mohit', 'kavitha',
+  'rehan', 'soham', 'rupali'
+];
+
+const speakerMap = {
+  anushka: 'priya',
+  manisha: 'shreya',
+  vidya: 'pooja',
+  arjun: 'rahul',
+  abhilash: 'varun',
+  karun: 'kabir',
+  hitesh: 'mohit'
+};
+
+const SPEAKER = BULBUL_V3_SPEAKERS.includes(rawSpeaker)
+  ? rawSpeaker
+  : (speakerMap[rawSpeaker] || 'shubh');
 const LANGUAGE = process.env.SARVAM_LANGUAGE || 'en-IN';
 
 /**
