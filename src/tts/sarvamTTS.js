@@ -82,7 +82,7 @@ async function textToSpeechRaw(text) {
         speaker: SPEAKER,
         model: 'bulbul:v3',
         speech_sample_rate: 24000,
-        properties: { pace: 1.0 },
+        pace: 1.0,
       },
       {
         headers: {
@@ -118,9 +118,7 @@ async function synthesizeChunk(text, targetRate) {
           speaker: SPEAKER,
           model: 'bulbul:v3',
           speech_sample_rate: targetRate,
-          properties: {
-            pace: 1.0,
-          },
+          pace: 1.0,
         },
         {
           headers: {
