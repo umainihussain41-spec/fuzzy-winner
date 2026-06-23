@@ -37,12 +37,13 @@ const LANGUAGE = process.env.SARVAM_LANGUAGE || 'en-IN';
 
 /**
  * Convert text to speech using Sarvam Bulbul:v3 (Indian accent)
- * Returns a Buffer of raw 16-bit PCM mono audio (8kHz) suitable for Exotel
+ * Returns a Buffer of raw 16-bit PCM mono audio suitable for Exotel
  *
  * @param {string} text       - Text to synthesize (max 2500 chars)
+ * @param {number} sampleRate - Target sample rate (default 24000Hz for best quality)
  * @returns {Promise<Buffer>} - Raw PCM audio buffer (16-bit signed, little-endian, mono)
  */
-async function textToSpeech(text, sampleRate = 8000) {
+async function textToSpeech(text, sampleRate = 24000) {
   if (!SARVAM_API_KEY) throw new Error('SARVAM_API_KEY not set in environment');
   if (!text || text.trim().length === 0) throw new Error('Empty text for TTS');
 
@@ -63,7 +64,7 @@ async function textToSpeech(text, sampleRate = 8000) {
  * Used by the dashboard to play back TTS at full quality for comparison.
  *
  * @param {string} text - Text to synthesize
- * @returns {Promise<Buffer>} - Full WAV file buffer at Sarvam's native sample rate
+ * @returns {Promise<Buffer>} - Full WAV file buffer at 24kHz (Sarvam's best quality)
  */
 async function textToSpeechRaw(text) {
   if (!SARVAM_API_KEY) return null;
@@ -71,7 +72,7 @@ async function textToSpeechRaw(text) {
 
   try {
     const firstChunk = splitText(text, 2000)[0];
-    // Request at Sarvam's native 22050Hz for maximum quality
+    // Request at 24kHz — Sarvam's bulbul:v3 best quality output
     const response = await axios.post(
       SARVAM_TTS_URL,
       {
@@ -79,7 +80,7 @@ async function textToSpeechRaw(text) {
         target_language_code: LANGUAGE,
         speaker: SPEAKER,
         model: 'bulbul:v3',
-        speech_sample_rate: 22050,
+        speech_sample_rate: 24000,
         properties: { pace: 1.0 },
       },
       {
@@ -100,7 +101,10 @@ async function textToSpeechRaw(text) {
   }
 }
 
-async function synthesizeChunk(text, sampleRate) {
+async function synthesizeChunk(text, targetRate) {
+  // Always request at 24kHz from Sarvam (bulbul:v3 native best quality).
+  // extractAndResamplePcm reads the WAV header and resamples to targetRate if needed.
+  const SARVAM_REQUEST_RATE = 24000;
   let lastError;
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
@@ -111,7 +115,7 @@ async function synthesizeChunk(text, sampleRate) {
           target_language_code: LANGUAGE,
           speaker: SPEAKER,
           model: 'bulbul:v3',
-          speech_sample_rate: sampleRate,
+          speech_sample_rate: SARVAM_REQUEST_RATE,
           properties: {
             pace: 1.0,
           },
@@ -131,9 +135,9 @@ async function synthesizeChunk(text, sampleRate) {
         throw new Error('No audio in TTS response');
       }
 
-      // Decode base64 WAV → validate sample rate → resample if needed → raw PCM
+      // Decode base64 WAV → resample to targetRate if needed → raw PCM
       const wavBuffer = Buffer.from(audios[0], 'base64');
-      return extractAndResamplePcm(wavBuffer, sampleRate);
+      return extractAndResamplePcm(wavBuffer, targetRate);
     } catch (err) {
       lastError = err;
       const status = err.response?.status;

@@ -141,6 +141,7 @@ app.get('/api/health', (req, res) => {
       llm: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
       stt: 'saarika:v2.5',
       tts: 'bulbul:v3',
+      sampleRate: '24kHz',
     },
   });
 });
@@ -214,7 +215,7 @@ server.listen(PORT, () => {
   console.log(`   WS    → ws://localhost:${PORT}/stream  (Exotel AgentStream)`);
   console.log(`   Dash  → http://localhost:${PORT}/dashboard.html`);
   console.log(`\n   LLM  : ${process.env.GROQ_MODEL || 'llama-3.3-70b-versatile'} via Groq`);
-  console.log(`   STT  : Sarvam saarika:v2.5 (Indian English)`);
-  console.log(`   TTS  : Sarvam bulbul:v3 (${process.env.SARVAM_LANGUAGE || 'en-IN'})`);
+  console.log(`   STT  : Sarvam saarika:v2.5 (Indian English) @ 24kHz`);
+  console.log(`   TTS  : Sarvam bulbul:v3 (${process.env.SARVAM_LANGUAGE || 'en-IN'}) @ 24kHz`);
   console.log(`\n   Public URL: ${process.env.PUBLIC_WS_URL || 'Not set — run ngrok http ' + PORT}\n`);
 });

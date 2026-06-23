@@ -369,7 +369,7 @@ function addTtsEntry(msg) {
 
   const log = document.getElementById('ttsLog');
 
-  // Build WAV blob URL for the Sarvam (22kHz) player
+  // Build WAV blob URL for the Sarvam (24kHz) player
   const sarvamUrl = wavBlobUrl(msg.wavBase64);
 
   // Build a downsampled 8kHz WAV for the Exotel quality player
@@ -389,7 +389,7 @@ function addTtsEntry(msg) {
     <div class="tts-players">
       <div class="tts-player-card sarvam">
         <div class="tts-player-title">🟣 Sarvam Direct</div>
-        <div class="tts-player-sub">22 050 Hz &middot; Full quality TTS</div>
+        <div class="tts-player-sub">24 000 Hz &middot; Full quality TTS</div>
         ${sarvamUrl ? `<audio controls src="${sarvamUrl}"></audio>` : '<div style="font-size:11px;color:var(--red)">unavailable</div>'}
       </div>
       <div class="tts-player-card exotel">
@@ -418,7 +418,7 @@ function wavBlobUrl(base64) {
 }
 
 /**
- * Decode the Sarvam 22kHz WAV, linearly resample PCM to targetRate,
+ * Decode the Sarvam 24kHz WAV, linearly resample PCM to targetRate,
  * wrap it in a WAV header, and return a blob URL — simulating what
  * the caller hears over the Exotel 8kHz phone channel.
  */
@@ -519,7 +519,7 @@ async function startWebCall() {
 
   setWcState('loading', '⏳ Connecting to bot…');
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  wcWs = new WebSocket(`${proto}//${location.host}/stream?sample-rate=8000`);
+  wcWs = new WebSocket(`${proto}//${location.host}/stream?sample-rate=24000`);
 
   wcWs.onopen = () => {
     wcActive = true;

@@ -19,7 +19,7 @@ const { runPipeline } = require('../pipeline');
 const VAD_SILENCE_MS = parseInt(process.env.VAD_SILENCE_MS || '700', 10);
 function handleExotelConnection(ws, req) {
   const urlObj = new URL(req.url || '', 'http://localhost');
-  const sampleRateParam = urlObj.searchParams.get('sample-rate') || urlObj.searchParams.get('sample_rate') || '8000';
+  const sampleRateParam = urlObj.searchParams.get('sample-rate') || urlObj.searchParams.get('sample_rate') || '24000';
   const sampleRate = parseInt(sampleRateParam, 10);
   const bytesPerMs = (sampleRate / 1000) * 2;
 

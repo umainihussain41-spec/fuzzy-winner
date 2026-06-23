@@ -11,14 +11,15 @@ const SARVAM_STT_URL = 'https://api.sarvam.ai/speech-to-text';
 const SARVAM_API_KEY = process.env.SARVAM_API_KEY;
 
 /**
- * Convert raw PCM (16-bit mono 8kHz, from Exotel) buffer to text transcript.
+ * Convert raw PCM (16-bit mono, from Exotel) buffer to text transcript.
  * Sarvam expects WAV format, so we wrap the PCM in a WAV header.
  *
  * @param {Buffer} audioBuffer  - Raw audio bytes from Exotel
  * @param {string} [lang]       - Language code (default: en-IN)
+ * @param {number} [sampleRate] - Sample rate of the audio (default: 24000)
  * @returns {Promise<string>}   - Transcript string
  */
-async function speechToText(audioBuffer, lang = 'en-IN', sampleRate = 8000) {
+async function speechToText(audioBuffer, lang = 'en-IN', sampleRate = 24000) {
   if (!SARVAM_API_KEY) throw new Error('SARVAM_API_KEY not set in environment');
 
   // Wrap raw PCM in WAV container (mono, 16-bit PCM)
