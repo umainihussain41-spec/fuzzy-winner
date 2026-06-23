@@ -19,7 +19,7 @@ const { runPipeline } = require('../pipeline');
 const VAD_SILENCE_MS = parseInt(process.env.VAD_SILENCE_MS || '700', 10);
 function handleExotelConnection(ws, req) {
   const urlObj = new URL(req.url || '', 'http://localhost');
-  const sampleRateParam = urlObj.searchParams.get('sample-rate') || urlObj.searchParams.get('sample_rate') || '8000';
+  const sampleRateParam = urlObj.searchParams.get('sample-rate') || urlObj.searchParams.get('sample_rate') || '16000';
   const sampleRate = parseInt(sampleRateParam, 10);
   const bytesPerMs = (sampleRate / 1000) * 2;
 
@@ -145,15 +145,18 @@ function resetSilenceTimer(ws, session) {
     if (session.isProcessing) return;
 
     // Collect buffered audio
-    const audioBuffer = Buffer.concat(session.audioChunks);
+    let audioBuffer = Buffer.concat(session.audioChunks);
     session.audioChunks = [];
     session.silenceTimer = null;
 
     // Minimum audio threshold: ignore very short clips (< 300ms)
     if (audioBuffer.length < session.bytesPerMs * 300) return;
 
+    // Apply voice isolation: Bandpass filter (300Hz - 3400Hz) & Noise Gate
+    audioBuffer = isolateVoice(audioBuffer, session.sampleRate);
+
     session.isProcessing = true;
-    console.log(`[${session.id}] Processing ${audioBuffer.length} bytes of audio...`);
+    console.log(`[${session.id}] Processing ${audioBuffer.length} bytes of filtered audio...`);
 
     try {
       const { transcript, botResponse, scraperUsed } = await runPipeline(
@@ -239,8 +242,8 @@ async function speakResponse(ws, session, text, isGreeting) {
         },
       }));
 
-      // Pace the chunks to match real-time audio playback
-      await sleep(msPerChunk);
+      // Pace slightly faster than real-time (85% of chunk duration) to prevent buffer underflow/slow-motion sound
+      await sleep(msPerChunk * 0.85);
     }
 
     if (!aborted && ws.readyState === 1) {
@@ -280,6 +283,59 @@ function serializeSession(s) {
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+/**
+ * Applies a simple bandpass filter (300Hz - 3400Hz) and a noise gate to raw 16-bit PCM audio.
+ * This isolates human speech frequencies and suppresses low-amplitude background noise.
+ */
+function isolateVoice(pcmBuffer, sampleRate) {
+  const numSamples = pcmBuffer.length / 2;
+  const outputBuffer = Buffer.alloc(pcmBuffer.length);
+  
+  // Cutoff frequencies for speech band (in Hz)
+  const fLow = 300;
+  const fHigh = 3400;
+  
+  // Bandpass filter coefficients (using simplified RC-based filters)
+  const dt = 1.0 / sampleRate;
+  const rcLow = 1.0 / (2 * Math.PI * fLow);
+  const alphaHigh = rcLow / (rcLow + dt);
+  
+  const rcHigh = 1.0 / (2 * Math.PI * fHigh);
+  const alphaLow = dt / (rcHigh + dt);
+  
+  let prevRaw = 0;
+  let prevHigh = 0;
+  let prevLow = 0;
+  
+  // Noise gate threshold: 16-bit sample amplitude threshold (0 to 32767)
+  const GATE_THRESHOLD = 300; 
+  
+  for (let i = 0; i < numSamples; i++) {
+    if (i * 2 + 1 >= pcmBuffer.length) break;
+    const sample = pcmBuffer.readInt16LE(i * 2);
+    
+    // 1. High-pass filter (remove low rumble below 300Hz)
+    const highFiltered = alphaHigh * (prevHigh + sample - prevRaw);
+    prevRaw = sample;
+    prevHigh = highFiltered;
+    
+    // 2. Low-pass filter (remove high sizzle above 3400Hz)
+    const lowFiltered = prevLow + alphaLow * (highFiltered - prevLow);
+    prevLow = lowFiltered;
+    
+    // 3. Noise Gate (suppress low volume background noise)
+    let outputSample = lowFiltered;
+    if (Math.abs(outputSample) < GATE_THRESHOLD) {
+      outputSample = outputSample * 0.1; // attenuate by 90%
+    }
+    
+    const clampedSample = Math.max(-32768, Math.min(32767, Math.round(outputSample)));
+    outputBuffer.writeInt16LE(clampedSample, i * 2);
+  }
+  
+  return outputBuffer;
 }
 
 module.exports = { handleExotelConnection };
