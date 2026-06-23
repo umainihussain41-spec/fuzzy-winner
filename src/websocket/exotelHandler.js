@@ -149,7 +149,10 @@ function resetSilenceTimer(ws, session) {
 
   session.silenceTimer = setTimeout(async () => {
     if (session.audioChunks.length === 0) return;
-    if (session.isProcessing) return;
+    if (session.isProcessing) {
+      console.log(`[${session.id}] VAD fired but isProcessing=true — skipping`);
+      return;
+    }
 
     // Collect buffered audio
     let audioBuffer = Buffer.concat(session.audioChunks);
@@ -157,18 +160,22 @@ function resetSilenceTimer(ws, session) {
     session.silenceTimer = null;
 
     // Minimum audio threshold: ignore very short clips (< 300ms)
-    if (audioBuffer.length < session.bytesPerMs * 300) return;
+    const minBytes = session.bytesPerMs * 300;
+    if (audioBuffer.length < minBytes) {
+      console.log(`[${session.id}] Audio too short (${audioBuffer.length} bytes < ${minBytes}) — skipping`);
+      return;
+    }
 
     // Check RMS energy — skip if audio is near-silent (no actual speech)
     const rms = computeRms(audioBuffer);
-    console.log(`[${session.id}] Audio RMS energy: ${rms.toFixed(1)} (threshold: 80)`);
+    console.log(`[${session.id}] Audio RMS energy: ${rms.toFixed(1)} (threshold: 80) | ${audioBuffer.length} bytes`);
     if (rms < 80) {
       console.log(`[${session.id}] Skipping — audio below RMS threshold (silence/noise)`);
       return;
     }
 
     session.isProcessing = true;
-    console.log(`[${session.id}] Processing ${audioBuffer.length} bytes of audio...`);
+    console.log(`[${session.id}] ▶ Pipeline start — ${audioBuffer.length} bytes`);
 
     try {
       const { transcript, botResponse, scraperUsed } = await runPipeline(
@@ -179,6 +186,7 @@ function resetSilenceTimer(ws, session) {
       );
 
       if (!transcript || transcript.trim().length < 2) {
+        console.log(`[${session.id}] Empty transcript — discarding turn`);
         session.isProcessing = false;
         return;
       }
@@ -199,13 +207,14 @@ function resetSilenceTimer(ws, session) {
         scraperUsed,
       });
 
+      // ── Release isProcessing BEFORE speaking so caller audio isn't blocked ──
+      session.isProcessing = false;
       await speakResponse(ws, session, botResponse, false);
     } catch (err) {
-      console.error(`[${session.id}] Pipeline error:`, err.message);
+      console.error(`[${session.id}] Pipeline error:`, err.message, err.stack);
+      session.isProcessing = false;
       await speakResponse(ws, session,
         "I'm sorry, I ran into an issue. Could you please repeat that?", false);
-    } finally {
-      session.isProcessing = false;
     }
   }, VAD_SILENCE_MS);
 }
@@ -217,27 +226,31 @@ async function speakResponse(ws, session, text, isGreeting) {
   let aborted = false;
   session.currentSpeakAbort = () => { aborted = true; };
   session.isSpeaking = true;
+  console.log(`[${session.id}] TTS start${isGreeting ? ' (greeting)' : ''}: "${text.slice(0, 60)}..."`);
 
   try {
-    // Fetch both resampled (Exotel) and raw WAV (Sarvam quality) in parallel
-    const [audioBuffer, rawWavBuffer] = await Promise.all([
-      textToSpeech(text, session.sampleRate),
-      textToSpeechRaw(text),
-    ]);
+    // Fetch Exotel-format audio first (critical path), then raw WAV for dashboard
+    const audioBuffer = await textToSpeech(text, session.sampleRate);
+    console.log(`[${session.id}] TTS done — ${audioBuffer.length} bytes at ${session.sampleRate}Hz`);
 
-    // Broadcast raw Sarvam WAV to dashboard for quality comparison
-    if (rawWavBuffer && global.broadcastToDashboard) {
-      global.broadcastToDashboard({
-        type: 'tts_audio',
-        sessionId: session.id,
-        text,
-        isGreeting: !!isGreeting,
-        wavBase64: rawWavBuffer.toString('base64'),
-        exotelSampleRate: session.sampleRate,
-      });
+    // Fire-and-forget: fetch raw WAV for dashboard (don't block call audio on this)
+    textToSpeechRaw(text).then((rawWavBuffer) => {
+      if (rawWavBuffer && global.broadcastToDashboard) {
+        global.broadcastToDashboard({
+          type: 'tts_audio',
+          sessionId: session.id,
+          text,
+          isGreeting: !!isGreeting,
+          wavBase64: rawWavBuffer.toString('base64'),
+          exotelSampleRate: session.sampleRate,
+        });
+      }
+    }).catch((err) => console.warn(`[${session.id}] TTS raw (dashboard) failed:`, err.message));
+
+    if (aborted) {
+      console.log(`[${session.id}] TTS aborted before streaming`);
+      return;
     }
-
-    if (aborted) return;
 
     // Calculate chunk size dynamically based on sample rate (~200ms chunk)
     // Satisfies Exotel's constraints:
@@ -300,6 +313,7 @@ async function speakResponse(ws, session, text, isGreeting) {
   } finally {
     session.isSpeaking = false;
     session.currentSpeakAbort = null;
+    console.log(`[${session.id}] 🎙️  Listening — bot finished speaking`);
   }
 }
 
