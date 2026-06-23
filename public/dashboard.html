@@ -633,6 +633,100 @@
       border: 1px solid rgba(59, 130, 246, 0.2);
       color: var(--accent);
     }
+
+    /* TTS Audio Comparison Panel */
+    .tts-panel {
+      margin-top: 20px;
+    }
+
+    .tts-log {
+      padding: 12px;
+      max-height: 480px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .tts-log::-webkit-scrollbar { width: 4px; }
+    .tts-log::-webkit-scrollbar-track { background: transparent; }
+    .tts-log::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
+
+    .tts-entry {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+      animation: fadeSlideIn 0.3s ease;
+    }
+
+    .tts-entry-label {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text3);
+      margin-bottom: 6px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .tts-entry-text {
+      font-size: 12px;
+      color: var(--text2);
+      line-height: 1.5;
+      margin-bottom: 12px;
+      font-style: italic;
+    }
+
+    .tts-players {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .tts-player-card {
+      background: var(--card2);
+      border: 1px solid var(--border2);
+      border-radius: 8px;
+      padding: 10px 12px;
+    }
+
+    .tts-player-card.sarvam { border-color: rgba(139,92,246,0.35); }
+    .tts-player-card.exotel { border-color: rgba(249,115,22,0.35); }
+
+    .tts-player-title {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+
+    .tts-player-card.sarvam .tts-player-title { color: #c4b5fd; }
+    .tts-player-card.exotel .tts-player-title { color: #fdba74; }
+
+    .tts-player-sub {
+      font-size: 10px;
+      color: var(--text3);
+      margin-bottom: 8px;
+    }
+
+    .tts-player-card audio {
+      width: 100%;
+      height: 30px;
+      accent-color: var(--accent);
+    }
+
+    .tts-badge-greeting {
+      font-size: 9px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: rgba(99,102,241,0.15);
+      border: 1px solid rgba(99,102,241,0.3);
+      color: #a5b4fc;
+    }
   </style>
 </head>
 <body>
@@ -800,6 +894,20 @@
         <div class="step-num">6</div>
         <div class="step-title">Monitor Live</div>
         <div class="step-desc">This dashboard shows live transcripts, event stream, and scraper usage in real time.</div>
+      </div>
+    </div>
+  </div>
+  <!-- TTS Audio Quality Comparison -->
+  <div class="panel tts-panel">
+    <div class="panel-header">
+      <div class="panel-title">🎧 TTS Quality Comparison
+        <span style="font-size:11px;font-weight:400;color:var(--text3);margin-left:4px;">Sarvam 22kHz vs Exotel 8kHz phone line</span>
+      </div>
+      <button onclick="clearTtsLog()" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:12px;">Clear</button>
+    </div>
+    <div class="tts-log" id="ttsLog">
+      <div style="text-align:center;padding:30px;color:var(--text3);font-size:12px;">
+        🎤 Waiting for bot to speak… Audio players will appear here for each response.
       </div>
     </div>
   </div>

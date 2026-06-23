@@ -58,6 +58,48 @@ async function textToSpeech(text, sampleRate = 8000) {
   return Buffer.concat(audioBuffers);
 }
 
+/**
+ * Returns the raw Sarvam WAV buffer at native quality (no resampling).
+ * Used by the dashboard to play back TTS at full quality for comparison.
+ *
+ * @param {string} text - Text to synthesize
+ * @returns {Promise<Buffer>} - Full WAV file buffer at Sarvam's native sample rate
+ */
+async function textToSpeechRaw(text) {
+  if (!SARVAM_API_KEY) return null;
+  if (!text || text.trim().length === 0) return null;
+
+  try {
+    const firstChunk = splitText(text, 2000)[0];
+    // Request at Sarvam's native 22050Hz for maximum quality
+    const response = await axios.post(
+      SARVAM_TTS_URL,
+      {
+        inputs: [firstChunk],
+        target_language_code: LANGUAGE,
+        speaker: SPEAKER,
+        model: 'bulbul:v3',
+        speech_sample_rate: 22050,
+        properties: { pace: 1.0 },
+      },
+      {
+        headers: {
+          'api-subscription-key': SARVAM_API_KEY,
+          'Content-Type': 'application/json',
+        },
+        timeout: 20000,
+      }
+    );
+    const audios = response.data?.audios;
+    if (!audios || audios.length === 0) return null;
+    // Return the full WAV buffer (with header) so browser can play it directly
+    return Buffer.from(audios[0], 'base64');
+  } catch (err) {
+    console.warn('[TTS] textToSpeechRaw failed:', err.message);
+    return null;
+  }
+}
+
 async function synthesizeChunk(text, sampleRate) {
   let lastError;
   for (let attempt = 1; attempt <= 3; attempt++) {
@@ -198,4 +240,4 @@ function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-module.exports = { textToSpeech };
+module.exports = { textToSpeech, textToSpeechRaw };

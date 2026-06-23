@@ -96,6 +96,10 @@ function handleMessage(msg) {
     case 'log':
       addEvent(msg.level || 'info', msg.message);
       break;
+
+    case 'tts_audio':
+      addTtsEntry(msg);
+      break;
   }
 }
 
@@ -356,7 +360,136 @@ function restoreInputs() {
   if (savedAppId) document.getElementById('callAppId').value = savedAppId;
 }
 
-// ── Init ─────────────────────────────────────────────────────────────────────
+// ── TTS Audio Quality Comparison ───────────────────────────────────────────────────
+let ttsEntries = [];
+
+function addTtsEntry(msg) {
+  ttsEntries.unshift(msg);
+  if (ttsEntries.length > 30) ttsEntries.pop();
+
+  const log = document.getElementById('ttsLog');
+
+  // Build WAV blob URL for the Sarvam (22kHz) player
+  const sarvamUrl = wavBlobUrl(msg.wavBase64);
+
+  // Build a downsampled 8kHz WAV for the Exotel quality player
+  const exotelUrl = buildExotelWavUrl(msg.wavBase64, msg.exotelSampleRate || 8000);
+
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+  const entry = document.createElement('div');
+  entry.className = 'tts-entry';
+  entry.innerHTML = `
+    <div class="tts-entry-label">
+      <span>🤖 ${escapeHtml(msg.sessionId)} &nbsp;&middot;&nbsp; ${timeStr}</span>
+      ${msg.isGreeting ? '<span class="tts-badge-greeting">GREETING</span>' : ''}
+    </div>
+    <div class="tts-entry-text">&ldquo;${escapeHtml(truncate(msg.text, 120))}&rdquo;</div>
+    <div class="tts-players">
+      <div class="tts-player-card sarvam">
+        <div class="tts-player-title">🟣 Sarvam Direct</div>
+        <div class="tts-player-sub">22 050 Hz &middot; Full quality TTS</div>
+        ${sarvamUrl ? `<audio controls src="${sarvamUrl}"></audio>` : '<div style="font-size:11px;color:var(--red)">unavailable</div>'}
+      </div>
+      <div class="tts-player-card exotel">
+        <div class="tts-player-title">🟠 Over Exotel</div>
+        <div class="tts-player-sub">${msg.exotelSampleRate || 8000} Hz &middot; Phone line quality</div>
+        ${exotelUrl ? `<audio controls src="${exotelUrl}"></audio>` : '<div style="font-size:11px;color:var(--red)">unavailable</div>'}
+      </div>
+    </div>
+  `;
+
+  // Clear placeholder if first entry
+  if (ttsEntries.length === 1) log.innerHTML = '';
+  log.insertBefore(entry, log.firstChild);
+}
+
+/** Decode base64 WAV and return a blob URL the browser can play */
+function wavBlobUrl(base64) {
+  if (!base64) return null;
+  try {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const blob = new Blob([bytes], { type: 'audio/wav' });
+    return URL.createObjectURL(blob);
+  } catch { return null; }
+}
+
+/**
+ * Decode the Sarvam 22kHz WAV, linearly resample PCM to targetRate,
+ * wrap it in a WAV header, and return a blob URL — simulating what
+ * the caller hears over the Exotel 8kHz phone channel.
+ */
+function buildExotelWavUrl(base64, targetRate) {
+  if (!base64) return null;
+  try {
+    const binary = atob(base64);
+    const src = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) src[i] = binary.charCodeAt(i);
+
+    // Read WAV header
+    const srcRate   = src[24] | (src[25] << 8) | (src[26] << 16) | (src[27] << 24);
+    const numCh     = src[22] | (src[23] << 8);
+    const bitDepth  = src[34] | (src[35] << 8);
+
+    // Find 'data' chunk
+    let offset = 12;
+    while (offset < src.length - 8) {
+      const id = String.fromCharCode(src[offset], src[offset+1], src[offset+2], src[offset+3]);
+      const sz = src[offset+4] | (src[offset+5] << 8) | (src[offset+6] << 16) | (src[offset+7] << 24);
+      if (id === 'data') { offset += 8; break; }
+      offset += 8 + sz;
+    }
+
+    const pcm = new Int16Array(src.buffer, offset, (src.length - offset) >> 1);
+
+    // Resample using linear interpolation
+    const ratio = srcRate / targetRate;
+    const dstLen = Math.floor(pcm.length / ratio);
+    const out = new Int16Array(dstLen);
+    for (let i = 0; i < dstLen; i++) {
+      const pos  = i * ratio;
+      const idx  = Math.floor(pos);
+      const frac = pos - idx;
+      const a = pcm[idx] || 0;
+      const b = pcm[Math.min(idx + 1, pcm.length - 1)] || 0;
+      out[i] = Math.round(a + frac * (b - a));
+    }
+
+    // Build WAV file
+    const dataLen = out.byteLength;
+    const buf = new ArrayBuffer(44 + dataLen);
+    const view = new DataView(buf);
+    const writeStr = (o, s) => { for (let i = 0; i < s.length; i++) view.setUint8(o + i, s.charCodeAt(i)); };
+    writeStr(0,  'RIFF');
+    view.setUint32(4,  36 + dataLen,        true);
+    writeStr(8,  'WAVE');
+    writeStr(12, 'fmt ');
+    view.setUint32(16, 16,                  true);
+    view.setUint16(20, 1,                   true); // PCM
+    view.setUint16(22, numCh || 1,          true);
+    view.setUint32(24, targetRate,          true);
+    view.setUint32(28, targetRate * 2,      true); // byte rate
+    view.setUint16(32, 2,                   true); // block align
+    view.setUint16(34, 16,                  true); // bits per sample
+    writeStr(36, 'data');
+    view.setUint32(40, dataLen,             true);
+    new Int16Array(buf, 44).set(out);
+
+    const blob = new Blob([buf], { type: 'audio/wav' });
+    return URL.createObjectURL(blob);
+  } catch (e) { console.warn('buildExotelWavUrl error', e); return null; }
+}
+
+function clearTtsLog() {
+  ttsEntries = [];
+  const log = document.getElementById('ttsLog');
+  log.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text3);font-size:12px;">🎤 Waiting for bot to speak…</div>';
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────
 connectDashboard();
 startUptimeTicker();
 restoreInputs();

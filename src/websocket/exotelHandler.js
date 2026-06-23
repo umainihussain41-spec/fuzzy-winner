@@ -86,6 +86,13 @@ function handleExotelConnection(ws, req) {
       case 'media': {
         if (session.isProcessing || !msg.media?.payload) break;
 
+        // Discard audio while bot is speaking — prevents Exotel echo loop
+        // (Exotel reflects our own TTS audio back as caller audio)
+        if (session.isSpeaking) {
+          session.audioChunks = []; // flush any partial buffer too
+          break;
+        }
+
         // Decode base64 audio and buffer it
         const chunk = Buffer.from(msg.media.payload, 'base64');
         session.audioChunks.push(chunk);
@@ -205,14 +212,31 @@ function resetSilenceTimer(ws, session) {
 
 // ── Send TTS audio back to Exotel ───────────────────────────────────────────
 async function speakResponse(ws, session, text, isGreeting) {
-  const { textToSpeech } = require('../tts/sarvamTTS');
+  const { textToSpeech, textToSpeechRaw } = require('../tts/sarvamTTS');
 
   let aborted = false;
   session.currentSpeakAbort = () => { aborted = true; };
   session.isSpeaking = true;
 
   try {
-    const audioBuffer = await textToSpeech(text, session.sampleRate);
+    // Fetch both resampled (Exotel) and raw WAV (Sarvam quality) in parallel
+    const [audioBuffer, rawWavBuffer] = await Promise.all([
+      textToSpeech(text, session.sampleRate),
+      textToSpeechRaw(text),
+    ]);
+
+    // Broadcast raw Sarvam WAV to dashboard for quality comparison
+    if (rawWavBuffer && global.broadcastToDashboard) {
+      global.broadcastToDashboard({
+        type: 'tts_audio',
+        sessionId: session.id,
+        text,
+        isGreeting: !!isGreeting,
+        wavBase64: rawWavBuffer.toString('base64'),
+        exotelSampleRate: session.sampleRate,
+      });
+    }
+
     if (aborted) return;
 
     // Calculate chunk size dynamically based on sample rate (~200ms chunk)
