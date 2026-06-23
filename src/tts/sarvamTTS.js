@@ -69,9 +69,9 @@ async function synthesizeChunk(text, sampleRate) {
           target_language_code: LANGUAGE,
           speaker: SPEAKER,
           model: 'bulbul:v3',
+          speech_sample_rate: sampleRate,
           properties: {
             pace: 1.0,
-            speech_sample_rate: sampleRate,   // Matches Exotel session sample rate
           },
         },
         {
